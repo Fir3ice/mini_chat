@@ -36,6 +36,7 @@ void main() async {
       child: const MiniChatApp(),
     ),
   );
+
 }
 
 class MiniChatApp extends StatelessWidget {

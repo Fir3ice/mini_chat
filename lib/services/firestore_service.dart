@@ -9,6 +9,12 @@ class FirestoreService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // --- КОРИСТУВАЧІ ---
+
+  // Додаємо метод для оновлення окремих полів профілю
+  Future<void> updateUserFields(String uid, Map<String, dynamic> data) async {
+    await _db.collection('users').doc(uid).update(data);
+  }
+
   Future<void> saveUser(UserModel user) async {
     await _db.collection('users').doc(user.uid).set(user.toMap());
   }
@@ -27,24 +33,31 @@ class FirestoreService {
     return null;
   }
 
+  Future<void> deleteUserDoc(String uid) async {
+    await _db.collection('users').doc(uid).delete();
+  }
+
   // --- ЧАТИ ---
   Future<String> createChat(UserModel otherUser) async {
     final myUid = _auth.currentUser!.uid;
+    final myEmail = _auth.currentUser!.email!;
 
-    final me = await getCurrentUser();
+    // Перевірка на дублікат чату (залишаємо)
+    final existingChat = await _db.collection('chats')
+        .where('userIds', arrayContains: myUid).get();
 
-    final myName = me?.displayName ?? 'User';
-    final myAvatar = me?.avatarBase64;
-    final myEmail = me?.email ?? _auth.currentUser!.email!;
+    for (var doc in existingChat.docs) {
+      List userIds = doc['userIds'];
+      if (userIds.contains(otherUser.uid)) {
+        return doc.id; // Повертаємо ID наявного чату
+      }
+    }
 
-    // 2. Створює чат
     final chatRef = _db.collection('chats').doc();
-
     await chatRef.set({
       'userIds': [myUid, otherUser.uid],
       'userEmails': [myEmail, otherUser.email],
-      'userNames': [myName, otherUser.displayName],
-      'userAvatars': [myAvatar, otherUser.avatarBase64],
+      // ТУТ БІЛЬШЕ НЕМАЄ userNames та userAvatars
       'lastMessage': 'Чат створено',
       'lastTime': FieldValue.serverTimestamp(),
     });

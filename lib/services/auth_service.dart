@@ -91,6 +91,62 @@ class AuthService {
     }
   }
 
+  // Метод для оновлення даних профілю
+  Future<void> updateProfile({String? name, String? status, String? avatarBase64}) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    Map<String, dynamic> updates = {};
+    if (name != null) {
+      updates['displayName'] = name;
+      await _auth.currentUser?.updateDisplayName(name);
+    }
+    if (status != null) updates['status'] = status;
+    if (avatarBase64 != null) updates['avatarBase64'] = avatarBase64;
+
+    if (updates.isNotEmpty) {
+      // Тільки оновлюємо дані самого юзера, ніяких циклів по чатах!
+      await _firestoreService.updateUserFields(uid, updates);
+    }
+  }
+
+  // Метод для повторної перевірки пароля (необхідно для безпечних операцій)
+  Future<void> reauthenticate(String password) async {
+    User? user = _auth.currentUser;
+    if (user != null && user.email != null) {
+      AuthCredential credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: password,
+      );
+      await user.reauthenticateWithCredential(credential);
+    }
+  }
+
+// Зміна пароля
+  Future<void> updatePassword(String oldPassword, String newPassword) async {
+    try {
+      await reauthenticate(oldPassword);
+      await _auth.currentUser?.updatePassword(newPassword);
+    } on FirebaseAuthException catch (e) {
+      throw _handleAuthError(e);
+    }
+  }
+
+// Повне видалення аккаунта
+  Future<void> deleteUserAccount(String password) async {
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return;
+
+      await reauthenticate(password);
+      await _firestoreService.deleteUserDoc(uid);
+
+      await _auth.currentUser?.delete();
+    } on FirebaseAuthException catch (e) {
+      throw _handleAuthError(e);
+    }
+  }
+
   Future<void> signOut() async {
     await _googleSignIn.signOut();
     await _auth.signOut();

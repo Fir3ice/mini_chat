@@ -89,7 +89,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           avatarBase64: _avatarBase64, // Передаємо фото
         );
 
-        if (mounted) Navigator.pushReplacementNamed(context, '/chats');
+        if (mounted) {
+          // Очищаємо стек навігації, щоб не було кнопки "Назад"
+          Navigator.pushNamedAndRemoveUntil(context, '/chats', (route) => false);
+        }
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
@@ -106,7 +109,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       final user = await _authService.signInWithGoogle();
       if (user != null && mounted) {
-        Navigator.pushReplacementNamed(context, '/chats');
+        // Очищаємо стек навігації
+        Navigator.pushNamedAndRemoveUntil(context, '/chats', (route) => false);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

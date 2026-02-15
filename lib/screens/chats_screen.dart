@@ -1,4 +1,5 @@
 import 'dart:convert'; // Для Base64
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -26,43 +27,63 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final emailController = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Новий чат'),
-        content: TextField(
-          controller: emailController,
-          decoration: const InputDecoration(hintText: 'Введіть email', labelText: 'Email'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Скасувати')),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final email = emailController.text.trim();
-              if (email.isEmpty) return;
-              final error = await context.read<ChatProvider>().createChatByEmail(email);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(error ?? 'Чат створено!'),
-                  backgroundColor: error == null ? Colors.green : Colors.red,
-                ));
-              }
-            },
-            child: const Text('Створити'),
+      builder: (ctx) {
+        return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+          title: const Text('Новий чат'),
+          content: SizedBox(
+            width: MediaQuery.of(ctx).size.width,
+            child: TextField(
+              controller: emailController,
+              decoration: const InputDecoration(
+                hintText: 'Введіть email',
+                labelText: 'Email',
+              ),
+            ),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Скасувати'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final email = emailController.text.trim();
+                if (email.isEmpty) return;
+                final error = await context.read<ChatProvider>().createChatByEmail(email);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(error ?? 'Чат створено!'),
+                    backgroundColor: error == null ? Colors.green : Colors.red,
+                  ));
+                }
+              },
+              child: const Text('Створити'),
+            ),
+          ],
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final myEmail = FirebaseAuth.instance.currentUser?.email;
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text(AppStrings.chatsTitle),
+        // Прибираємо кнопку назад, якщо ми потрапили сюди після логіну/реєстрації
+        automaticallyImplyLeading: false,
         actions: [
-          IconButton(icon: const Icon(Icons.person), onPressed: () => Navigator.pushNamed(context, '/profile')),
+          IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: () => Navigator.pushNamed(context, '/profile'),
+          ),
         ],
       ),
       body: Column(
@@ -74,8 +95,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
               decoration: InputDecoration(
                 hintText: AppStrings.searchPlaceholder,
                 prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-                filled: true, fillColor: const Color(0xFFF1F1F1),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: const Color(0xFFF1F1F1),
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
             ),
@@ -92,39 +117,59 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   itemBuilder: (context, index) {
                     final chat = provider.chats[index];
 
-                    // --- ЛОГІКА ВИЗНАЧЕННЯ СПІВРОЗМОВНИКА ---
-                    String chatName = 'Чат';
-                    String? chatAvatarBase64; // Аватар співрозмовника
+                    // Знаходимо ID іншого користувача в чаті
+                    final otherUserId = chat.userIds.firstWhere(
+                          (id) => id != myUid,
+                      orElse: () => '',
+                    );
 
-                    if (myEmail != null && chat.userEmails.contains(myEmail)) {
-                      final otherIndex = chat.userEmails.indexOf(myEmail) == 0 ? 1 : 0;
-                      if (otherIndex < chat.userNames.length) {
-                        chatName = chat.userNames[otherIndex];
-                      }
-                      if (otherIndex < chat.userAvatars.length) {
-                        chatAvatarBase64 = chat.userAvatars[otherIndex];
-                      }
-                    }
+                    // Використовуємо StreamBuilder для отримання актуальних даних профілю
+                    return StreamBuilder<DocumentSnapshot>(
+                      stream: FirebaseFirestore.instance.collection('users').doc(otherUserId).snapshots(),
+                      builder: (context, userSnapshot) {
+                        if (userSnapshot.connectionState == ConnectionState.waiting) {
+                          return const ListTile(title: Text('...'));
+                        }
 
-                    return ListTile(
-                      // Якщо є фото (Base64) - показує його, інакше - літери
-                      leading: (chatAvatarBase64 != null && chatAvatarBase64.isNotEmpty)
-                          ? CircleAvatar(radius: 25, backgroundImage: MemoryImage(base64Decode(chatAvatarBase64)))
-                          : Avatar(text: chatName.isNotEmpty ? chatName[0] : '?', size: 50),
+                        String chatName = 'Користувач';
+                        String? chatAvatarBase64;
 
-                      title: Text(chatName, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: Text(chat.lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFF666666))),
-                      trailing: Text("${chat.lastTime.toDate().hour}:${chat.lastTime.toDate().minute.toString().padLeft(2, '0')}", style: const TextStyle(fontSize: 12)),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChatScreen(
-                              chatId: chat.id,
-                              chatName: chatName,
-                              chatAvatarBase64: chatAvatarBase64,
-                            ),
+                        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                          final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+                          chatName = userData['displayName'] ?? 'Користувач';
+                          chatAvatarBase64 = userData['avatarBase64'];
+                        }
+
+                        return ListTile(
+                          leading: (chatAvatarBase64 != null && chatAvatarBase64.isNotEmpty)
+                              ? CircleAvatar(
+                            radius: 25,
+                            backgroundImage: MemoryImage(base64Decode(chatAvatarBase64)),
+                          )
+                              : Avatar(text: chatName.isNotEmpty ? chatName[0] : '?', size: 50),
+                          title: Text(chatName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text(
+                            chat.lastMessage,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Color(0xFF666666)),
                           ),
+                          trailing: Text(
+                            "${chat.lastTime.toDate().hour}:${chat.lastTime.toDate().minute.toString().padLeft(2, '0')}",
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ChatScreen(
+                                  chatId: chat.id,
+                                  chatName: chatName,
+                                  chatAvatarBase64: chatAvatarBase64,
+                                ),
+                              ),
+                            );
+                          },
                         );
                       },
                     );

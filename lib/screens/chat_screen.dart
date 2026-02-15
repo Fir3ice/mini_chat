@@ -10,13 +10,13 @@ import '../providers/chat_provider.dart';
 class ChatScreen extends StatefulWidget {
   final String? chatId;
   final String? chatName;
-  final String? chatAvatarBase64; // <-- Нове поле
+  final String? chatAvatarBase64;
 
   const ChatScreen({
     super.key,
     this.chatId,
     this.chatName,
-    this.chatAvatarBase64, // <--
+    this.chatAvatarBase64,
   });
 
   @override
@@ -54,7 +54,6 @@ class _ChatScreenState extends State<ChatScreen> {
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
         title: Row(
           children: [
-            // ВІДОБРАЖЕННЯ АВАТАРА В ЧАТІ
             if (widget.chatAvatarBase64 != null && widget.chatAvatarBase64!.isNotEmpty)
               CircleAvatar(radius: 20, backgroundImage: MemoryImage(base64Decode(widget.chatAvatarBase64!)))
             else
@@ -71,57 +70,76 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Consumer<ChatProvider>(
-              builder: (context, provider, child) {
-                if (provider.isLoadingMessages) return const Center(child: CircularProgressIndicator());
-                if (provider.currentMessages.isEmpty) return const Center(child: Text('Повідомлень немає.'));
+      // SafeArea захищає від перекриття системними панелями Android
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Consumer<ChatProvider>(
+                builder: (context, provider, child) {
+                  if (provider.isLoadingMessages) return const Center(child: CircularProgressIndicator());
+                  if (provider.currentMessages.isEmpty) return const Center(child: Text('Повідомлень немає.'));
 
-                return ListView.builder(
-                  reverse: true,
-                  padding: const EdgeInsets.all(15),
-                  itemCount: provider.currentMessages.length,
-                  itemBuilder: (context, index) {
-                    final msg = provider.currentMessages[index];
-                    final isMe = msg.senderId == myUid;
+                  return ListView.builder(
+                    reverse: true,
+                    padding: const EdgeInsets.all(15),
+                    itemCount: provider.currentMessages.length,
+                    itemBuilder: (context, index) {
+                      final msg = provider.currentMessages[index];
+                      final isMe = msg.senderId == myUid;
 
-                    return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 15),
-                        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isMe ? const Color(0xFF0088CC) : const Color(0xFFF1F1F1),
-                          borderRadius: BorderRadius.circular(15),
+                      return Align(
+                        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 15),
+                          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isMe ? const Color(0xFF0088CC) : const Color(0xFFF1F1F1),
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                            children: [
+                              Text(msg.text, style: TextStyle(color: isMe ? Colors.white : Colors.black)),
+                              const SizedBox(height: 2),
+                              Text("${msg.timestamp.toDate().hour}:${msg.timestamp.toDate().minute.toString().padLeft(2, '0')}", style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
+                            ],
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                          children: [
-                            Text(msg.text, style: TextStyle(color: isMe ? Colors.white : Colors.black)),
-                            const SizedBox(height: 2),
-                            Text("${msg.timestamp.toDate().hour}:${msg.timestamp.toDate().minute.toString().padLeft(2, '0')}", style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(15),
-            child: Row(
-              children: [
-                Expanded(child: TextField(controller: _messageController, decoration: InputDecoration(hintText: AppStrings.messagePlaceholder, border: OutlineInputBorder(borderRadius: BorderRadius.circular(20)), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)))),
-                const SizedBox(width: 10),
-                CircleAvatar(backgroundColor: const Color(0xFF0088CC), child: IconButton(icon: const Icon(Icons.send, color: Colors.white), onPressed: _sendMessage)),
-              ],
+            Container(
+              padding: const EdgeInsets.fromLTRB(15, 10, 15, 10),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                      child: TextField(
+                          controller: _messageController,
+                          decoration: InputDecoration(
+                              hintText: AppStrings.messagePlaceholder,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)
+                          )
+                      )
+                  ),
+                  const SizedBox(width: 10),
+                  CircleAvatar(
+                      backgroundColor: const Color(0xFF0088CC),
+                      child: IconButton(icon: const Icon(Icons.send, color: Colors.white), onPressed: _sendMessage)
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
