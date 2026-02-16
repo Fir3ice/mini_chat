@@ -26,15 +26,62 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final myUid = FirebaseAuth.instance.currentUser?.uid;
+  final String plannerUid = "kXRLRDETdeU5v7maxsakYSp3twM2";
 
   @override
   void initState() {
     super.initState();
+    _messageController.addListener(_onTextChanged);
     if (widget.chatId != null) {
       Future.microtask(() =>
           Provider.of<ChatProvider>(context, listen: false).initMessagesStream(widget.chatId!)
       );
     }
+  }
+
+  void _onTextChanged() {
+    String text = _messageController.text;
+    String? template;
+
+    if (text.endsWith('/task ')) {
+      template = "Назва:\nОпис:\nПроект:\nДедлайн:";
+    } else if (text.endsWith('/meet ')) {
+      template = "Назва:\nОпис:\nЛокація/посилання:\nЧас:";
+    }
+
+    if (template != null) {
+      String newText = text.substring(0, text.length - 6) + template;
+      _messageController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: newText.length),
+      );
+    }
+  }
+
+  DateTime? _parseDeadline(String text) {
+    try {
+      final RegExp regExp = RegExp(r"(?:Дедлайн|Час):\s*(\d{2}\.\d{2}\.\d{4}(?:\s\d{2}:\d{2})?)", caseSensitive: false);
+      final match = regExp.firstMatch(text);
+
+      if (match != null && match.group(1) != null) {
+        String dateStr = match.group(1)!.trim();
+        if (dateStr.length == 10) {
+          final parts = dateStr.split('.');
+          return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+        } else if (dateStr.length >= 16) {
+          final parts = dateStr.split(' ');
+          final dateParts = parts[0].split('.');
+          final timeParts = parts[1].split(':');
+          return DateTime(
+            int.parse(dateParts[2]), int.parse(dateParts[1]), int.parse(dateParts[0]),
+            int.parse(timeParts[0]), int.parse(timeParts[1]),
+          );
+        }
+      }
+    } catch (e) {
+      return null;
+    }
+    return null;
   }
 
   void _sendMessage() async {
@@ -43,6 +90,13 @@ class _ChatScreenState extends State<ChatScreen> {
     await FirebaseAnalytics.instance.logEvent(name: 'send_message', parameters: {'length': text.length, 'screen': 'chat_screen'});
     context.read<ChatProvider>().sendMessage(widget.chatId!, text);
     _messageController.clear();
+  }
+
+  @override
+  void dispose() {
+    _messageController.removeListener(_onTextChanged);
+    _messageController.dispose();
+    super.dispose();
   }
 
   @override
@@ -70,7 +124,6 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
       ),
-      // SafeArea захищає від перекриття системними панелями Android
       body: SafeArea(
         child: Column(
           children: [
@@ -80,12 +133,23 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (provider.isLoadingMessages) return const Center(child: CircularProgressIndicator());
                   if (provider.currentMessages.isEmpty) return const Center(child: Text('Повідомлень немає.'));
 
+                  var displayMessages = List.from(provider.currentMessages);
+
+                  if (widget.chatName == "Planner" || widget.chatId == plannerUid) {
+                    displayMessages.sort((a, b) {
+                      DateTime dateA = _parseDeadline(a.text) ?? a.timestamp.toDate();
+                      DateTime dateB = _parseDeadline(b.text) ?? b.timestamp.toDate();
+                      // Сортування від найближчого до найпізнішого
+                      return dateA.compareTo(dateB);
+                    });
+                  }
+
                   return ListView.builder(
                     reverse: true,
                     padding: const EdgeInsets.all(15),
-                    itemCount: provider.currentMessages.length,
+                    itemCount: displayMessages.length,
                     itemBuilder: (context, index) {
-                      final msg = provider.currentMessages[index];
+                      final msg = displayMessages[index];
                       final isMe = msg.senderId == myUid;
 
                       return Align(
@@ -102,7 +166,8 @@ class _ChatScreenState extends State<ChatScreen> {
                             children: [
                               Text(msg.text, style: TextStyle(color: isMe ? Colors.white : Colors.black)),
                               const SizedBox(height: 2),
-                              Text("${msg.timestamp.toDate().hour}:${msg.timestamp.toDate().minute.toString().padLeft(2, '0')}", style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
+                              Text("${msg.timestamp.toDate().hour}:${msg.timestamp.toDate().minute.toString().padLeft(2, '0')}",
+                                  style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
                             ],
                           ),
                         ),
@@ -123,6 +188,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   Expanded(
                       child: TextField(
                           controller: _messageController,
+                          maxLines: null,
                           decoration: InputDecoration(
                               hintText: AppStrings.messagePlaceholder,
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(20)),

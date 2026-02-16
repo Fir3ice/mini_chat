@@ -9,20 +9,20 @@ class ChatProvider extends ChangeNotifier {
 
   // --- ЧАТИ ---
   List<Chat> _chats = [];
-  bool _isLoadingChats = true; // За замовчуванням true, поки не прийдуть дані
+  bool _isLoadingChats = true;
   String? _chatsError;
   String _searchQuery = '';
 
-  StreamSubscription? _chatsSubscription; // Підписка на оновлення
+  StreamSubscription? _chatsSubscription;
 
   List<Chat> get chats {
     if (_searchQuery.isEmpty) {
       return _chats;
     } else {
       return _chats.where((chat) {
-        // Шукає по іменах учасників
-        final names = chat.userNames.join(' ').toLowerCase();
-        return names.contains(_searchQuery.toLowerCase());
+        // Шукаємо по емейлах учасників чату
+        final emails = chat.userEmails.join(' ').toLowerCase();
+        return emails.contains(_searchQuery.toLowerCase());
       }).toList();
     }
   }
@@ -38,14 +38,11 @@ class ChatProvider extends ChangeNotifier {
   List<Message> get currentMessages => _currentMessages;
   bool get isLoadingMessages => _isLoadingMessages;
 
-  // --- ЛОГІКА ---
-
-  // Ініціалізація (замість loadChats)
   void initChatsStream() {
     _isLoadingChats = true;
     notifyListeners();
 
-    _chatsSubscription?.cancel(); // Скасовує стару підписку, якщо була
+    _chatsSubscription?.cancel();
     _chatsSubscription = _firestoreService.getChatsStream().listen(
           (chatsData) {
         _chats = chatsData;
@@ -66,7 +63,6 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Підписка на повідомлення конкретного чату
   void initMessagesStream(String chatId) {
     _isLoadingMessages = true;
     _currentMessages = [];
@@ -86,7 +82,6 @@ class ChatProvider extends ChangeNotifier {
     );
   }
 
-  // Відправка
   Future<void> sendMessage(String chatId, String text) async {
     if (text.isEmpty) return;
     try {
@@ -96,17 +91,14 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  // Створення чату
   Future<String?> createChatByEmail(String email) async {
     try {
       final user = await _firestoreService.getUserByEmail(email);
       if (user == null) {
         return 'Користувача з таким email не знайдено';
       }
-
-      // Створює чат
       await _firestoreService.createChat(user);
-      return null; // Null - успіх
+      return null;
     } catch (e) {
       return 'Помилка створення чату: $e';
     }
