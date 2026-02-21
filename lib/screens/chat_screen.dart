@@ -1,4 +1,4 @@
-import 'dart:convert'; // Base64
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
@@ -27,6 +27,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final myUid = FirebaseAuth.instance.currentUser?.uid;
   final String plannerUid = "kXRLRDETdeU5v7maxsakYSp3twM2";
+  final String llamaUid = "U5QQtnodR3Ufunw4OIm3BFbV6XN2";
 
   @override
   void initState() {
@@ -87,13 +88,29 @@ class _ChatScreenState extends State<ChatScreen> {
   void _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty || widget.chatId == null) return;
+
     await FirebaseAnalytics.instance.logEvent(name: 'send_message', parameters: {'length': text.length, 'screen': 'chat_screen'});
-    context.read<ChatProvider>().sendMessage(widget.chatId!, text);
+
+    // Перевіряє чи це чат з Ламою
+    bool isLlama = widget.chatName == "Llama" || widget.chatId == llamaUid;
+
+    context.read<ChatProvider>().sendMessage(
+        widget.chatId!,
+        text,
+        isLlamaChat: isLlama
+    );
+
     _messageController.clear();
   }
 
   @override
   void dispose() {
+    // Очищує сесію AI при виході з чату
+    Future.microtask(() {
+      if (mounted) {
+        context.read<ChatProvider>().clearAiSession();
+      }
+    });
     _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
     super.dispose();
@@ -131,7 +148,6 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Consumer<ChatProvider>(
                 builder: (context, provider, child) {
                   if (provider.isLoadingMessages) return const Center(child: CircularProgressIndicator());
-                  if (provider.currentMessages.isEmpty) return const Center(child: Text('Повідомлень немає.'));
 
                   var displayMessages = List.from(provider.currentMessages);
 
@@ -139,7 +155,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     displayMessages.sort((a, b) {
                       DateTime dateA = _parseDeadline(a.text) ?? a.timestamp.toDate();
                       DateTime dateB = _parseDeadline(b.text) ?? b.timestamp.toDate();
-                      // Сортування від найближчого до найпізнішого
                       return dateA.compareTo(dateB);
                     });
                   }
@@ -147,9 +162,26 @@ class _ChatScreenState extends State<ChatScreen> {
                   return ListView.builder(
                     reverse: true,
                     padding: const EdgeInsets.all(15),
-                    itemCount: displayMessages.length,
+                    itemCount: displayMessages.length + (provider.isAiTyping ? 1 : 0),
                     itemBuilder: (context, index) {
-                      final msg = displayMessages[index];
+                      if (provider.isAiTyping && index == 0) {
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 15),
+                            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F1F1),
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: const Text("Llama думає...",
+                                style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)),
+                          ),
+                        );
+                      }
+
+                      final msgIndex = provider.isAiTyping ? index - 1 : index;
+                      final msg = displayMessages[msgIndex];
                       final isMe = msg.senderId == myUid;
 
                       return Align(
@@ -199,7 +231,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   const SizedBox(width: 10),
                   CircleAvatar(
                       backgroundColor: const Color(0xFF0088CC),
-                      child: IconButton(icon: const Icon(Icons.send, color: Colors.white), onPressed: _sendMessage)
+                      child: IconButton(
+                          icon: const Icon(Icons.send, color: Colors.white),
+                          onPressed: _sendMessage
+                      )
                   ),
                 ],
               ),

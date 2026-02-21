@@ -9,8 +9,6 @@ class FirestoreService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // --- КОРИСТУВАЧІ ---
-
-  // Додаємо метод для оновлення окремих полів профілю
   Future<void> updateUserFields(String uid, Map<String, dynamic> data) async {
     await _db.collection('users').doc(uid).update(data);
   }
@@ -42,14 +40,13 @@ class FirestoreService {
     final myUid = _auth.currentUser!.uid;
     final myEmail = _auth.currentUser!.email!;
 
-    // Перевірка на дублікат чату (залишаємо)
     final existingChat = await _db.collection('chats')
         .where('userIds', arrayContains: myUid).get();
 
     for (var doc in existingChat.docs) {
       List userIds = doc['userIds'];
       if (userIds.contains(otherUser.uid)) {
-        return doc.id; // Повертаємо ID наявного чату
+        return doc.id;
       }
     }
 
@@ -57,7 +54,6 @@ class FirestoreService {
     await chatRef.set({
       'userIds': [myUid, otherUser.uid],
       'userEmails': [myEmail, otherUser.email],
-      // ТУТ БІЛЬШЕ НЕМАЄ userNames та userAvatars
       'lastMessage': 'Чат створено',
       'lastTime': FieldValue.serverTimestamp(),
     });
@@ -84,6 +80,18 @@ class FirestoreService {
     final myUid = _auth.currentUser!.uid;
     await _db.collection('chats').doc(chatId).collection('messages').add({
       'senderId': myUid,
+      'text': text,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    await _db.collection('chats').doc(chatId).update({
+      'lastMessage': text,
+      'lastTime': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> sendAiMessage(String chatId, String text, String aiUid) async {
+    await _db.collection('chats').doc(chatId).collection('messages').add({
+      'senderId': aiUid,
       'text': text,
       'timestamp': FieldValue.serverTimestamp(),
     });

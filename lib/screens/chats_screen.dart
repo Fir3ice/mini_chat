@@ -1,4 +1,4 @@
-import 'dart:convert'; // Для Base64
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -77,7 +77,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(AppStrings.chatsTitle),
-        // Прибираємо кнопку назад, якщо ми потрапили сюди після логіну/реєстрації
         automaticallyImplyLeading: false,
         actions: [
           IconButton(
@@ -117,13 +116,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   itemBuilder: (context, index) {
                     final chat = provider.chats[index];
 
-                    // Знаходимо ID іншого користувача в чаті
                     final otherUserId = chat.userIds.firstWhere(
                           (id) => id != myUid,
                       orElse: () => '',
                     );
 
-                    // Використовуємо StreamBuilder для отримання актуальних даних профілю
                     return StreamBuilder<DocumentSnapshot>(
                       stream: FirebaseFirestore.instance.collection('users').doc(otherUserId).snapshots(),
                       builder: (context, userSnapshot) {

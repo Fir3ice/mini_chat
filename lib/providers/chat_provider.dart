@@ -3,9 +3,15 @@ import 'package:flutter/material.dart';
 import '../models/chat_model.dart';
 import '../models/message_model.dart';
 import '../services/firestore_service.dart';
+import '../services/groq_service.dart';
 
 class ChatProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
+  final GroqService _groqService = GroqService();
+
+  final String llamaUid = "U5QQtnodR3Ufunw4OIm3BFbV6XN2";
+
+  List<Map<String, String>> _aiSessionHistory = [];
 
   // --- ЧАТИ ---
   List<Chat> _chats = [];
@@ -20,7 +26,6 @@ class ChatProvider extends ChangeNotifier {
       return _chats;
     } else {
       return _chats.where((chat) {
-        // Шукаємо по емейлах учасників чату
         final emails = chat.userEmails.join(' ').toLowerCase();
         return emails.contains(_searchQuery.toLowerCase());
       }).toList();
@@ -82,12 +87,36 @@ class ChatProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> sendMessage(String chatId, String text) async {
+  // Очищення сесії AI
+  void clearAiSession() {
+    _aiSessionHistory = [];
+    print("AI Session cleared");
+  }
+
+  bool _isAiTyping = false;
+  bool get isAiTyping => _isAiTyping;
+
+  Future<void> sendMessage(String chatId, String text, {bool isLlamaChat = false}) async {
     if (text.isEmpty) return;
     try {
       await _firestoreService.sendMessage(chatId, text);
+
+      if (isLlamaChat) {
+        _isAiTyping = true;
+        notifyListeners();
+
+        _aiSessionHistory.add({"role": "user", "content": text});
+        final aiResponse = await _groqService.getChatResponse(_aiSessionHistory);
+        _aiSessionHistory.add({"role": "assistant", "content": aiResponse});
+        await _firestoreService.sendAiMessage(chatId, aiResponse, llamaUid);
+
+        _isAiTyping = false;
+        notifyListeners();
+      }
     } catch (e) {
-      print('Error sending message: $e');
+      _isAiTyping = false;
+      notifyListeners();
+      print('Error: $e');
     }
   }
 
@@ -97,8 +126,7 @@ class ChatProvider extends ChangeNotifier {
       if (user == null) {
         return 'Користувача з таким email не знайдено';
       }
-      await _firestoreService.createChat(user);
-      return null;
+      return await _firestoreService.createChat(user);
     } catch (e) {
       return 'Помилка створення чату: $e';
     }
